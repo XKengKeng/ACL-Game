@@ -21,46 +21,31 @@ namespace RhythmMilestone
 
     public static class MathLesson
     {
-        public static List<MathQuestion> CreateVisual()
-        {
-            var result=new List<MathQuestion>();
-            float beat=60f/144;
-            for(int i=0;i<12;i++)
-            {
-                int a=3+i%6,b=2+i%3;
-                int answer=i%3==1?a-b:i%3==2?a*b:a+b;
-                string op=i%3==1?"−":i%3==2?"×":"+";
-                // Vary answer placement rather than teaching a repeated lane sequence.
-                int lane=new[]{1,3,0,2,3,1,2,0}[i%8];
-                result.Add(new MathQuestion($"{a} {op} {b} = ?",answer,lane,(4+i*8)*beat,i%4==2?beat*1.5f:0));
-            }
-            return result;
-        }
+        public const float SongDuration = 120f;
+        public const int SongQuestionCount = 10;
 
-        public static List<MathQuestion> Create(bool tutorial)
-        {
-            var questions=new List<MathQuestion>();
-            float beat=60f/(tutorial?96:128);
-            int count=tutorial?8:16;
-            for(int i=0;i<count;i++)
+        public static List<MathQuestion> CreateVisual() => CreateSongQuestions(144f);
+        public static List<MathQuestion> Create(bool tutorial) => tutorial
+            ? new List<MathQuestion>
             {
-                int lane=new[]{1,0,3,2}[i%4];
-                int a,b,answer; string prompt;
-                if(tutorial)
-                {
-                    int[] left={2,7,3,9,4,10,6,8},right={3,2,4,3,4,4,3,3};
-                    a=left[i]; b=right[i]; bool subtract=i%2==1;
-                    answer=subtract?a-b:a+b; prompt=$"{a} {(subtract?"−":"+")} {b} = ?";
-                }
-                else
-                {
-                    a=4+i%7; b=2+i%4;
-                    if(i%3==2) { answer=a*b; prompt=$"{a} × {b} = ?"; }
-                    else if(i%3==1) { answer=a-b; prompt=$"{a} − {b} = ?"; }
-                    else { answer=a+b; prompt=$"{a} + {b} = ?"; }
-                }
-                bool hold=tutorial?i==4||i==7:i%4==3;
-                questions.Add(new MathQuestion(prompt,answer,lane,4*beat+i*(tutorial?8:6)*beat,hold?beat*1.5f:0));
+                new MathQuestion("2 + 3 = ?", 5, 1, 12.5f),
+                new MathQuestion("7 − 2 = ?", 5, 3, 17.5f)
+            }
+            : CreateSongQuestions(128f);
+
+        static List<MathQuestion> CreateSongQuestions(float bpm)
+        {
+            var questions = new List<MathQuestion>();
+            float secondsPerBeat = 60f / bpm;
+            int[] answerLanes = { 1, 3, 0, 2, 3, 1, 2, 0, 3, 1 };
+            for (int i = 0; i < SongQuestionCount; i++)
+            {
+                int left = 4 + i % 7;
+                int right = 2 + i % 3;
+                string op = i % 3 == 0 ? "+" : i % 3 == 1 ? "−" : "×";
+                int answer = op == "+" ? left + right : op == "−" ? left - right : left * right;
+                float time = (float)System.Math.Round((8f + i * 12f) / secondsPerBeat) * secondsPerBeat;
+                questions.Add(new MathQuestion($"{left} {op} {right} = ?", answer, answerLanes[i], time));
             }
             return questions;
         }

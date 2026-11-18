@@ -35,7 +35,7 @@ namespace RhythmMilestone
                 if(tick%4==2) Mix(output,snare,time,.32f);
                 if(advanced && tick%2==0)
                 {
-                    int phase=Math.Min(5,Math.Max(0,(tick/2-4)/16));
+                    int phase=Math.Min(5,(int)(VisualMotion.SongBeat((float)time)/16));
                     Mix(output,plucks[(tick/2+phase)%4],time,.45f);
                     if(phase>=4 && tick%8==6) Mix(output,snare,time+beat*.5,.16f);
                 }

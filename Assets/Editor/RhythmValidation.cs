@@ -30,11 +30,11 @@ public static class RhythmValidation
             hold=new HoldTracker(2); hold.Begin(); Check(hold.Tick(1,false)==HoldTracker.Result.Broken,"Early release breaks");
             Check(hold.Tick(2,true)==HoldTracker.Result.Broken,"Cannot revive broken hold");
             hold=new HoldTracker(2); hold.Begin(); Check(hold.Tick(1.94f,false)==HoldTracker.Result.Complete,"Forgiving final release");
-            int[] answers={5,5,7,6,8,6,9,5};
+            int[] answers={5,5};
             for(int level=0;level<2;level++)
             {
                 var questions=MathLesson.Create(level==0);
-                Check(questions.Count==(level==0?8:16),"Level question count");
+                Check(questions.Count==(level==0?2:10),"Level question count");
                 for(int i=0;i<questions.Count;i++)
                 {
                     var q=questions[i];
@@ -63,8 +63,8 @@ public static class RhythmValidation
             {
                 game.StartLevel(level); Set(game,"autoplay",true);
                 Check((bool)Get(game,"playing") && !((GameObject)Get(game,"menu")).activeSelf,"Starting level switches screens");
-                int expected=Questions(game).Sum(q=>q.Duration>0?2:1);
-                for(float t=-2;t<50;t+=.016f) { Call(game,"Spawn",t); Call(game,"TickNotes",t); }
+                int expected=ExpectedJudgments(game);
+                for(float t=-2;t<121;t+=.016f) { Call(game,"Spawn",t); Call(game,"TickNotes",t); }
                 Check((int)Get(game,"score")==expected*1000,"Autoplay only scores correct answers and tails");
                 Check((int)Get(game,"combo")==expected && (int)Get(game,"judgments")==expected,"Distractors do not break combo");
                 Check((int)Get(game,"mistakes")==0 && ((IList)Get(game,"notes")).Count==0,"Every question resolves once");
@@ -72,6 +72,7 @@ public static class RhythmValidation
                 Check(((GameObject)Get(game,"resultButtons")).activeSelf,"Results navigation visible");
             }
             game.StartLevel(0); var lesson=Questions(game);
+            ResolveEarlierNotes(game,lesson[0].Time);
             Call(game,"Spawn",lesson[0].Time); Call(game,"TryHit",lesson[0].CorrectLane,lesson[0].Time);
             Check((int)Get(game,"score")==1000 && (int)Get(game,"combo")==1,"Manual correct math choice");
             Call(game,"TickNotes",lesson[0].Time+.4f);
@@ -85,30 +86,44 @@ public static class RhythmValidation
             Call(game,"Spawn",lesson[0].Time); Call(game,"TryHit",lesson[0].CorrectLane,lesson[0].Time+.2f);
             Check((int)Get(game,"score")==650,"Tutorial has forgiving GOOD timing");
             Call(game,"Restart");
-            foreach(var q in lesson) if(q!=lesson[4]) q.Resolved=true;
-            Call(game,"Spawn",lesson[4].Time); Call(game,"TryHit",lesson[4].CorrectLane,lesson[4].Time);
-            Check((int)Get(game,"score")==1000,"Correct hold starts");
-            Call(game,"TickNotes",lesson[4].Time+.25f);
+            float holdStart=5f;
+            ResolveEarlierNotes(game,holdStart);
+            Call(game,"Spawn",holdStart); Call(game,"TryHit",2,holdStart);
+            Check((int)Get(game,"score")==1000,"Tutorial hold starts");
+            Call(game,"TickNotes",holdStart+.25f);
             Check((int)Get(game,"score")==750 && (int)Get(game,"combo")==0 && (int)Get(game,"brokenHolds")==1,"Early release loses points and combo");
             Call(game,"Restart");
-            for(float t=-2;t<50;t+=.016f) { Call(game,"Spawn",t); Call(game,"TickNotes",t); }
-            Check((int)Get(game,"judgments")==10 && (int)Get(game,"mistakes")==8 && (int)Get(game,"score")==0,"Only missed correct answers count, score floors at zero");
+            for(float t=-2;t<21;t+=.016f) { Call(game,"Spawn",t); Call(game,"TickNotes",t); }
+            Check((int)Get(game,"judgments")==6 && (int)Get(game,"mistakes")==5 && (int)Get(game,"score")==0,"Only playable notes count as misses, score floors at zero");
             Call(game,"ShowMenu");
             Check(!(bool)Get(game,"playing") && !(bool)Get(audio,"running") && ((IList)Get(game,"notes")).Count==0,"Menu stops audio and clears playfield");
             ValidateVisual(game);
             ValidateSync(game,audio);
             ExportBeat(audio);
-            Debug.Log("VISUAL RHYTHM VALIDATION PASSED: "+checks+" checks; Tutorial 10 / Basic 20 / Orbit 21 judgments; all six motion phases and gestures.");
+            Debug.Log("VISUAL RHYTHM VALIDATION PASSED: "+checks+" checks across Tutorial, Basic, and Orbit.");
             EditorApplication.Exit(0);
         }
         catch(Exception error) { Debug.LogException(error); EditorApplication.Exit(1); }
+    }
+
+    static int ExpectedJudgments(RhythmGamePrototype game)
+    {
+        return ((IList)Get(game,"chart")).Cast<object>()
+            .Where(n=>(int)Get(n,"lane")==((MathQuestion)Get(n,"question")).CorrectLane)
+            .Sum(n=>(float)Get(n,"duration")>0?2:1);
+    }
+
+    static void ResolveEarlierNotes(RhythmGamePrototype game,float time)
+    {
+        foreach(var note in (IList)Get(game,"chart"))
+            if((float)Get(note,"time")<time) ((MathQuestion)Get(note,"question")).Resolved=true;
     }
 
     static void ValidateVisual(RhythmGamePrototype game)
     {
         game.StartLevel(2);
         var math=Questions(game);
-        Check(math.Count==12,"Orbit has twelve spaced math questions");
+        Check(math.Count==10,"Orbit has ten spaced math questions");
         foreach(var q in math)
         {
             Check(q.Choices.Distinct().Count()==4 && q.Choices[q.CorrectLane]==q.Answer,"Orbit choices are unique and solvable");
@@ -116,7 +131,7 @@ public static class RhythmValidation
             Check(q.Answer==(parts[1]=="+"?a+b:parts[1]=="−"?a-b:a*b),"Orbit arithmetic");
         }
         for(int i=1;i<math.Count;i++)
-            Check(math[i].Time-math[i-1].Time>3.3f,"Orbit gives over three seconds between questions");
+            Check(math[i].Time-math[i-1].Time>11f,"Orbit gives about twelve seconds between questions");
         var chart=(IList)Get(game,"chart"); int expected=0;
         var bonuses=new List<object>();
         foreach(var n in chart)
@@ -125,7 +140,12 @@ public static class RhythmValidation
             if((int)Get(n,"lane")==((MathQuestion)Get(n,"question")).CorrectLane)
                 expected+=(float)Get(n,"duration")>0?2:1;
         }
-        Check(expected==21 && bonuses.Count==6,"Orbit has fifteen math judgments plus six rhythm bonuses");
+        Check((float)Get(game,"chartEnd")==120f && bonuses.Count>60,"Orbit fills two minutes with rhythm notes between questions");
+        Check(!((UnityEngine.UI.Text)Get(game,"lessonText")).gameObject.activeSelf,"Main levels hide tutorial instructions");
+        Call(game,"UpdateQuestion",0f);
+        Check(!((GameObject)Get(game,"questionCard")).activeSelf,"Question stays hidden during rhythm play");
+        Call(game,"UpdateQuestion",math[0].Time-2f);
+        Check(((GameObject)Get(game,"questionCard")).activeSelf,"Question appears shortly before answer notes");
         for(int i=0;i<chart.Count;i++) for(int j=i+1;j<chart.Count;j++)
         {
             var a=chart[i]; var b=chart[j];
@@ -133,14 +153,14 @@ public static class RhythmValidation
             Check((float)Get(b,"time")>=(float)Get(a,"time")+(float)Get(a,"duration")+.18f,"No overlapping input windows on a lane");
         }
         Set(game,"autoplay",true);
-        for(float t=-2;t<48;t+=.016f) { Call(game,"UpdateVisuals",t); Call(game,"Spawn",t); Call(game,"TickNotes",t); }
-        Check((int)Get(game,"score")==21000 && (int)Get(game,"combo")==21 && (int)Get(game,"mistakes")==0,"Full Orbit autoplay including holds, drag, and flick");
+        for(float t=-2;t<121;t+=.016f) { Call(game,"UpdateVisuals",t); Call(game,"Spawn",t); Call(game,"TickNotes",t); }
+        Check((int)Get(game,"score")==expected*1000 && (int)Get(game,"combo")==expected && (int)Get(game,"mistakes")==0,"Full Orbit autoplay including holds and drag");
         Check(((IList)Get(game,"notes")).Count==0,"Orbit resolves every visual note");
         Call(game,"Restart");
         var tracks=(Transform[])Get(game,"tracks");
         for(int phase=0;phase<6;phase++)
         {
-            float beat=phase*16+8,t=(beat+4)*60/144;
+            float beat=phase*16+8,t=beat*120/96;
             var pose=VisualMotion.Sample(beat);
             Check(pose.Phase==phase,"All six visual phases are reachable");
             Call(game,"UpdateVisuals",t);
@@ -160,7 +180,7 @@ public static class RhythmValidation
             for(int lane=0;lane<4;lane++)
                 Check(Vector2.Distance(VisualMotion.LanePosition(before,lane),VisualMotion.LanePosition(after,lane))<.01f,"Phase transitions have no position jump");
         }
-        foreach(NoteGesture gesture in new[]{NoteGesture.Drag,NoteGesture.Flick})
+        foreach(NoteGesture gesture in new[]{NoteGesture.Drag})
         {
             Call(game,"Restart"); Set(game,"autoplay",false);
             object target=bonuses.First(n=>((MathQuestion)Get(n,"question")).Gesture==gesture);

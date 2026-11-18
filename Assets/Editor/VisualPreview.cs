@@ -1,5 +1,7 @@
 #if UNITY_EDITOR
 using System.IO;
+using System.Collections;
+using System.Linq;
 using System.Reflection;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -14,7 +16,7 @@ public static class VisualPreview
     static double began;
     static int stage,shot,frame;
     static float nextFrame;
-    static readonly float[] Targets={4.8f,11.5f,18.2f,24.85f,31.5f,38.2f};
+    static readonly float[] Targets={7f,30f,54f,78f,90f,114f};
     static VisualPreview() { EditorApplication.update+=Tick; }
     public static void OpenLevelSelect()
     {
@@ -34,6 +36,12 @@ public static class VisualPreview
     }
     static void Capture(string name)
     { Directory.CreateDirectory("Screenshots/VisualFrames"); ScreenCapture.CaptureScreenshot(Path.GetFullPath("Screenshots/"+name+".png")); }
+    static bool IsScoringNote(object note)
+    {
+        var type=note.GetType();
+        var question=(MathQuestion)type.GetField("question").GetValue(note);
+        return (int)type.GetField("lane").GetValue(note)==question.CorrectLane;
+    }
     static void Tick()
     {
         if(!SessionState.GetBool("VisualPreview",false)||!EditorApplication.isPlaying) return;
@@ -65,8 +73,11 @@ public static class VisualPreview
                 Capture("orbit-results"); stage=4; began=now;
                 int score=(int)game.GetType().GetField("score",Flags).GetValue(game);
                 int combo=(int)game.GetType().GetField("combo",Flags).GetValue(game);
-                if(score!=21000||combo!=21) Debug.LogError("ORBIT PREVIEW FAILED: score="+score+", combo="+combo);
-                else Debug.Log("ORBIT PREVIEW PASSED: score=21000, combo=21, all six phases, "+frame+" recorded frames.");
+                var chart=(IList)game.GetType().GetField("chart",Flags).GetValue(game);
+                int expected=chart.Cast<object>().Count(note=>IsScoringNote(note))
+                    + chart.Cast<object>().Count(note=>IsScoringNote(note) && (float)note.GetType().GetField("duration").GetValue(note)>0);
+                if(score!=expected*1000||combo!=expected) Debug.LogError("ORBIT PREVIEW FAILED: score="+score+", combo="+combo);
+                else Debug.Log("ORBIT PREVIEW PASSED: score="+score+", combo="+combo+", "+frame+" recorded frames.");
             }
         }
         if(stage==4 && now-began>1)

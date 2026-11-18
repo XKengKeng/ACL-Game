@@ -25,7 +25,6 @@ namespace RhythmMilestone
         readonly TextMesh[] keyLabels=new TextMesh[4];
         readonly SpriteRenderer[] lineCores=new SpriteRenderer[2],lineGlows=new SpriteRenderer[2];
         readonly List<LineRenderer> orbitRings=new List<LineRenderer>();
-        Text phaseText, cueText;
         GameObject syncPanel;
         Text syncStatus;
         Image syncFlash;
@@ -34,14 +33,12 @@ namespace RhythmMilestone
         readonly List<double> syncTaps=new List<double>();
         int audioOffsetMs,lastTapBeat=int.MinValue;
         bool advanced, reducedMotion;
-        int selectedLevel, currentPhase=-1;
-        float pointerStartTime;
-        Vector2 pointerStart, previousPointer;
+        GameObject questionCard;
         float Bpm => advanced?144:tutorial?96:128;
         float TravelSpeed => advanced?2.7f:Speed;
         Sprite white, capsule, glow;
-        Text scoreText, comboText, feedbackText, detailText, modeText, resultText;
-        Text titleText, subtitleText, questionText, lessonText;
+        Text scoreText, comboText, feedbackText, modeText, resultText;
+        Text questionText, lessonText;
         GameObject hud, menu, resultButtons;
         PulseAudio sound;
         List<MathQuestion> questions=new List<MathQuestion>();
@@ -106,7 +103,6 @@ namespace RhythmMilestone
                 {
                     if(Input.GetKeyDown(Keys[lane])) { flashes[lane]=1; sound.Click(); TryHit(lane,t); }
                     if(Input.GetKey(Keys[lane])) TryGesture(lane,t,NoteGesture.Drag);
-                    if(Input.GetKeyUp(Keys[lane])) TryGesture(lane,t,NoteGesture.Flick);
                 }
                 Vector2 pointer=Input.mousePosition;
                 Vector3 world=Camera.main.ScreenToWorldPoint(pointer);
@@ -115,27 +111,18 @@ namespace RhythmMilestone
                 int hovered=PickLane(world,t);
                 if(Input.GetMouseButtonDown(0) && !overUI)
                 {
-                    mouseLane=hovered; pointerStart=previousPointer=pointer; pointerStartTime=Time.unscaledTime;
+                    mouseLane=hovered;
                     if(mouseLane>=0) { flashes[mouseLane]=1; sound.Click(); TryHit(mouseLane,t); }
                 }
-                if(Input.GetMouseButton(0) && !overUI)
-                {
-                    if(hovered>=0) TryGesture(hovered,t,NoteGesture.Drag);
-                    float pixelsPerSecond=(pointer-previousPointer).magnitude/Mathf.Max(.001f,Time.unscaledDeltaTime);
-                    if((pointer-pointerStart).magnitude>=24 && pixelsPerSecond>450 && Time.unscaledTime-pointerStartTime<.5f)
-                    {
-                        int flickLane=mouseLane>=0?mouseLane:hovered;
-                        if(flickLane>=0) TryGesture(flickLane,t,NoteGesture.Flick);
-                    }
-                }
-                previousPointer=pointer;
+                if (Input.GetMouseButton(0) && !overUI && hovered >= 0)
+                    TryGesture(hovered, t, NoteGesture.Drag);
             }
             TickNotes(t); TickEffects(t); UpdateQuestion(t);
             if(Input.GetMouseButtonUp(0)) mouseLane=-1;
             progress.fillAmount = Mathf.Clamp01(t / EndTime);
-            modeText.text = (autoplay ? "AUTO DEMO / A TO PLAY" : "D F J K / CLICK   •   DRAG: HOLD   •   FLICK: RELEASE / SWIPE")
-                + (sound.Muted?"  /  MUTED":"  /  M MUTE") + (reducedMotion?"  /  V: CALM":"  /  V: MOTION");
-            if (!finished && next == chart.Count && notes.Count == 0) Complete();
+            modeText.text = autoplay && !finished ? "Auto" : "";
+            if (!finished && t >= EndTime && next == chart.Count && notes.Count == 0)
+                Complete();
         }
 
         void BuildCamera()
@@ -216,9 +203,8 @@ namespace RhythmMilestone
 
         void UpdateVisuals(float t)
         {
-            float beat=Mathf.Max(0,t*Bpm/60-4);
             VisualPose pose;
-            if(advanced) pose=VisualMotion.Sample(beat,reducedMotion);
+            if(advanced) pose=VisualMotion.Sample(VisualMotion.SongBeat(t),reducedMotion);
             else
             {
                 float motion=reducedMotion?0:tutorial?.15f:1;
@@ -251,13 +237,6 @@ namespace RhythmMilestone
                 ring.transform.localScale=new Vector3(1, i==1?.65f:1,1)*(1+pulse*(reducedMotion?0:.015f));
                 ring.startColor=ring.endColor=Alpha(colors[(pose.Phase+i)%4],.065f+pulse*.025f);
             }
-            if(phaseText!=null)
-            {
-                phaseText.text=advanced?$"{pose.Phase+1:00} / {VisualMotion.Names[pose.Phase]}":"";
-                float left=16-Mathf.Repeat(beat,16);
-                cueText.text=advanced && pose.Phase<5 && left<=4?$"NEXT: {VisualMotion.Names[pose.Phase+1]}  /  {Mathf.CeilToInt(left)} BEATS":advanced?"FOLLOW THE LINE • NUMBERS STAY UPRIGHT":"";
-                currentPhase=pose.Phase;
-            }
             if(sound!=null) sound.SetVisualPhase(advanced?pose.Phase:-1);
         }
 
@@ -283,21 +262,22 @@ namespace RhythmMilestone
             obj.GetComponent<Canvas>().renderMode=RenderMode.ScreenSpaceOverlay;
             var scaler=obj.GetComponent<CanvasScaler>(); scaler.uiScaleMode=CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution=new Vector2(1920,1080); scaler.matchWidthOrHeight=.5f;
-            phaseText=MakeText(obj.transform,"",24,TextAnchor.MiddleCenter,.35f,.87f,.65f,.95f,new Color(.5f,.9f,1));
-            cueText=MakeText(obj.transform,"",17,TextAnchor.MiddleCenter,.3f,.80f,.7f,.88f,new Color(.65f,.75f,.9f));
-            titleText=MakeText(obj.transform,"PULSE / 01",34,TextAnchor.UpperLeft,.035f,.86f,.4f,.96f,new Color(.65f,.9f,1));
-            subtitleText=MakeText(obj.transform,"ORBITAL   /   128 BPM",20,TextAnchor.UpperLeft,.036f,.81f,.4f,.89f,new Color(.5f,.6f,.76f));
-            scoreText=MakeText(obj.transform,"",40,TextAnchor.UpperRight,.6f,.86f,.965f,.96f,Color.white);
-            detailText=MakeText(obj.transform,"",20,TextAnchor.UpperRight,.5f,.81f,.963f,.89f,new Color(.6f,.72f,.85f));
-            comboText=MakeText(obj.transform,"",60,TextAnchor.MiddleCenter,.75f,.60f,.96f,.78f,Color.white);
-            feedbackText=MakeText(obj.transform,"",30,TextAnchor.MiddleCenter,.70f,.47f,.99f,.58f,Color.white);
-            modeText=MakeText(obj.transform,"",19,TextAnchor.LowerCenter,.1f,.10f,.9f,.15f,new Color(.5f,.7f,.85f));
-            MakeText(obj.transform,"TAP / HOLD / DRAG / FLICK   •   R RETRY   •   ESC LEVELS   •   V MOTION   •   C SYNC",21,
-                TextAnchor.LowerCenter,.03f,.025f,.97f,.08f,new Color(.68f,.77f,.88f));
-            resultText=MakeText(obj.transform,"",32,TextAnchor.MiddleCenter,.2f,.35f,.8f,.50f,Color.white);
-            questionText=MakeText(obj.transform,"",48,TextAnchor.MiddleLeft,.04f,.52f,.30f,.67f,Color.white);
-            lessonText=MakeText(obj.transform,"",22,TextAnchor.UpperLeft,.04f,.24f,.29f,.51f,new Color(.65f,.78f,.9f));
-            Button back=MakeButton(obj.transform,"LEVELS",.035f,.73f,.16f,.79f,new Color(.12f,.24f,.35f),ShowMenu);
+            MakeButton(obj.transform,"Levels",.035f,.885f,.125f,.955f,new Color(.12f,.24f,.35f),ShowMenu);
+            scoreText=MakeText(obj.transform,"",36,TextAnchor.MiddleRight,.78f,.89f,.965f,.96f,Color.white);
+            comboText=MakeText(obj.transform,"",23,TextAnchor.MiddleRight,.78f,.83f,.965f,.89f,new Color(.65f,.8f,.95f));
+            feedbackText=MakeText(obj.transform,"",22,TextAnchor.MiddleRight,.72f,.76f,.965f,.82f,Color.white);
+            modeText=MakeText(obj.transform,"",18,TextAnchor.MiddleLeft,.038f,.83f,.16f,.88f,new Color(.5f,.7f,.85f));
+            resultText=MakeText(obj.transform,"",32,TextAnchor.MiddleCenter,.2f,.35f,.8f,.58f,Color.white);
+            questionCard=new GameObject("Question Card",typeof(RectTransform),typeof(Image));
+            questionCard.transform.SetParent(obj.transform,false);
+            SetRect(questionCard.GetComponent<RectTransform>(),.37f,.865f,.63f,.953f);
+            var cardImage=questionCard.GetComponent<Image>();
+            cardImage.color=new Color(.045f,.075f,.12f,.96f);
+            cardImage.raycastTarget=false;
+            questionText=MakeText(questionCard.transform,"",44,TextAnchor.MiddleCenter,0,0,1,1,Color.white);
+            questionCard.SetActive(false);
+            lessonText=MakeText(obj.transform,"",24,TextAnchor.MiddleCenter,.18f,.035f,.82f,.17f,new Color(.75f,.86f,.96f));
+            lessonText.gameObject.name="Tutorial instruction";
             resultButtons=new GameObject("Result Actions",typeof(RectTransform)); resultButtons.transform.SetParent(obj.transform,false);
             SetRect(resultButtons.GetComponent<RectTransform>(),0,0,1,1);
             MakeButton(resultButtons.transform,"RETRY",.30f,.23f,.48f,.31f,new Color(.10f,.3f,.4f),Restart);
@@ -321,19 +301,15 @@ namespace RhythmMilestone
             menu.GetComponent<Canvas>().renderMode=RenderMode.ScreenSpaceOverlay;
             var scaler=menu.GetComponent<CanvasScaler>(); scaler.uiScaleMode=CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution=new Vector2(1920,1080); scaler.matchWidthOrHeight=.5f;
-            MakeText(menu.transform,"PULSE / MATH RHYTHM",26,TextAnchor.MiddleLeft,.12f,.84f,.88f,.91f,new Color(.3f,.85f,1));
-            MakeText(menu.transform,"Solve it. Feel the beat.",68,TextAnchor.MiddleLeft,.12f,.69f,.90f,.85f,Color.white);
-            MakeText(menu.transform,"Choose a level",24,TextAnchor.MiddleLeft,.12f,.62f,.88f,.70f,new Color(.6f,.72f,.85f));
-            var one=MakeButton(menu.transform,"",.08f,.29f,.345f,.60f,new Color(.06f,.14f,.22f),()=>StartLevel(0));
-            var two=MakeButton(menu.transform,"",.365f,.29f,.63f,.60f,new Color(.14f,.08f,.23f),()=>StartLevel(1));
-            LevelCard(one.transform,"01 / TUTORIAL","First steps","96 BPM  •  8 QUESTIONS", "Addition + subtraction\nGuided timing • tap + hold",colors[0]);
-            LevelCard(two.transform,"02 / BASIC","Find your rhythm","128 BPM  •  16 QUESTIONS", "Add, subtract + multiply\nFaster choices • hold challenges",colors[1]);
-            var three=MakeButton(menu.transform,"",.65f,.29f,.915f,.60f,new Color(.19f,.09f,.15f),()=>StartLevel(2));
-            LevelCard(three.transform,"03 / ORBIT","Visual remix","144 BPM  •  12 QUESTIONS","Spaced questions • six visual acts\nDrag / flick rhythm bonuses",colors[2]);
-            MakeText(menu.transform,"Read the equation. Hit ONLY its answer as the notes reach the line.",25,TextAnchor.MiddleCenter,.1f,.17f,.9f,.25f,new Color(.75f,.85f,.95f));
-            MakeButton(menu.transform,"C / AUDIO SYNC",.70f,.84f,.91f,.90f,new Color(.12f,.25f,.31f),OpenCalibration);
-            MakeText(menu.transform,"Correct: +1000   /   Wrong: −500 + combo break   /   Miss: −250",22,TextAnchor.MiddleCenter,.1f,.11f,.9f,.18f,new Color(.6f,.72f,.85f));
-            MakeText(menu.transform,"LEVEL 1 / 2 / 3   •   M MUTE   •   V MOTION   •   C AUDIO SYNC",20,TextAnchor.MiddleCenter,.1f,.035f,.9f,.10f,new Color(.35f,.65f,.8f));
+            MakeText(menu.transform,"Pulse",68,TextAnchor.MiddleCenter,.14f,.74f,.86f,.88f,Color.white);
+            MakeText(menu.transform,"Choose a level",24,TextAnchor.MiddleCenter,.14f,.65f,.86f,.73f,new Color(.65f,.77f,.9f));
+            var one=MakeButton(menu.transform,"",.13f,.38f,.36f,.61f,new Color(.06f,.14f,.22f),()=>StartLevel(0));
+            var two=MakeButton(menu.transform,"",.385f,.38f,.615f,.61f,new Color(.14f,.08f,.23f),()=>StartLevel(1));
+            var three=MakeButton(menu.transform,"",.64f,.38f,.87f,.61f,new Color(.19f,.09f,.15f),()=>StartLevel(2));
+            LevelCard(one.transform,"Tutorial","Learn to play");
+            LevelCard(two.transform,"Basic","2:00");
+            LevelCard(three.transform,"Orbit","2:00");
+            MakeButton(menu.transform,"Audio sync",.42f,.22f,.58f,.30f,new Color(.12f,.25f,.31f),OpenCalibration);
         }
 
         void BuildCalibration()
@@ -389,12 +365,10 @@ namespace RhythmMilestone
             syncStatus.text=$"OFFSET {audioOffsetMs:+0;-0;0} ms\n"+(nearest<4?"LISTEN TO THE COUNT-IN":$"TAPS {syncTaps.Count} / 8  •  AUTO ESTIMATE AFTER 8")+"\nPositive offset delays the visual pulse.";
         }
 
-        void LevelCard(Transform parent,string number,string title,string meta,string description,Color color)
+        void LevelCard(Transform parent,string title,string description)
         {
-            MakeText(parent,number,22,TextAnchor.MiddleLeft,.07f,.75f,.95f,.95f,color);
-            MakeText(parent,title,32,TextAnchor.MiddleLeft,.07f,.51f,.95f,.76f,Color.white);
-            MakeText(parent,meta,20,TextAnchor.MiddleLeft,.07f,.36f,.95f,.54f,color);
-            MakeText(parent,description,20,TextAnchor.MiddleLeft,.07f,.07f,.95f,.36f,new Color(.7f,.77f,.88f));
+            MakeText(parent,title,38,TextAnchor.MiddleCenter,.04f,.43f,.96f,.84f,Color.white);
+            MakeText(parent,description,22,TextAnchor.MiddleCenter,.04f,.18f,.96f,.45f,new Color(.69f,.79f,.91f));
         }
 
         Button MakeButton(Transform parent,string label,float x1,float y1,float x2,float y2,Color color,Action action)
@@ -412,10 +386,9 @@ namespace RhythmMilestone
 
         public void StartLevel(int level)
         {
-            selectedLevel=Mathf.Clamp(level,0,2); tutorial=selectedLevel==0; advanced=selectedLevel==2; playing=true; autoplay=false;
+            tutorial=level<=0; advanced=level>=2; playing=true; autoplay=false;
             menu.SetActive(false); hud.SetActive(true); line.gameObject.SetActive(true);
-            titleText.text=advanced?"03 / ORBIT":tutorial?"01 / TUTORIAL":"02 / BASIC";
-            subtitleText.text=advanced?"VISUAL REMIX   /   144 BPM":tutorial?"FIRST STEPS   /   96 BPM":"FIND YOUR RHYTHM   /   128 BPM";
+            lessonText.gameObject.SetActive(tutorial);
             BuildChart(); Restart();
         }
 
@@ -427,49 +400,61 @@ namespace RhythmMilestone
 
         void BuildChart()
         {
-            chart.Clear(); chartEnd=0; questions=advanced?MathLesson.CreateVisual():MathLesson.Create(tutorial);
-            foreach(MathQuestion question in questions)
-                for(int lane=0;lane<4;lane++) chart.Add(new ChartNote(question.Time,lane,question.Duration,question));
-            if(advanced)
+            chart.Clear();
+            questions = advanced ? MathLesson.CreateVisual() : MathLesson.Create(tutorial);
+            foreach (MathQuestion question in questions)
+                for (int lane = 0; lane < 4; lane++)
+                    chart.Add(new ChartNote(question.Time, lane, question.Duration, question));
+
+            float beat = 60f / Bpm;
+            if (tutorial)
             {
-                float beat=60f/Bpm;
-                for(int i=0;i<questions.Count;i++)
+                AddRhythmNote(4 * beat, 0);
+                AddRhythmNote(8 * beat, 2, 2 * beat);
+                AddRhythmNote(14 * beat, 3, gesture: NoteGesture.Drag);
+                chartEnd = 20f;
+            }
+            else
+            {
+                int[] lanes = { 0, 1, 3, 2, 1, 0, 2, 3 };
+                for (int beatIndex = 4; beatIndex * beat < MathLesson.SongDuration - 1.5f; beatIndex += 2)
                 {
-                    var question=questions[i];
-                    // Fill breathing space with simple rhythm gestures after solving the equation.
-                    if(i%2==1)
-                    {
-                        int lane=(question.CorrectLane+1)%4;
-                        var gesture=i<4?NoteGesture.Tap:i<8?NoteGesture.Drag:NoteGesture.Flick;
-                        var bonus=new MathQuestion("RHYTHM BONUS",0,lane,question.Time+2.5f*beat,0,gesture);
-                        chart.Add(new ChartNote(bonus.Time,lane,0,bonus,true));
-                    }
+                    int step = beatIndex / 2;
+                    float time = beatIndex * beat;
+                    float duration = step % 8 == 4 ? beat : 0;
+                    if (questions.Exists(q => time + duration >= q.Time - 3f && time <= q.Time + .5f))
+                        continue;
+                    var gesture = advanced && step % 8 == 6 ? NoteGesture.Drag : NoteGesture.Tap;
+                    AddRhythmNote(time, lanes[step % lanes.Length], duration, gesture);
                 }
+                chartEnd = MathLesson.SongDuration;
             }
             chart.Sort((a,b)=>a.time.CompareTo(b.time));
-            foreach(ChartNote note in chart) chartEnd=Mathf.Max(chartEnd,note.End);
+        }
+
+        void AddRhythmNote(float time, int lane, float duration = 0, NoteGesture gesture = NoteGesture.Tap)
+        {
+            var note = new MathQuestion("", 0, lane, time, duration, gesture);
+            chart.Add(new ChartNote(time, lane, duration, note, true));
         }
 
         void UpdateQuestion(float t)
         {
-            if(finished) return;
-            Note sustained=notes.Find(n=>n.started&&n.hold!=null);
-            if(sustained!=null)
-            {
-                questionText.text=sustained.data.question.Prompt;
-                lessonText.text=$"KEEP HOLDING {Keys[sustained.data.lane]}\n\nKeep the key or mouse pressed\nuntil the ribbon reaches the line.\n\n{Mathf.Max(0,sustained.data.End-t):0.0}s LEFT\n\nEarly release: −250 + combo break.";
-                return;
-            }
-            MathQuestion current=null;
-            foreach(MathQuestion q in questions)
-                if(!q.Resolved && t<=q.Time+MissLimit) { current=q; break; }
-            if(current==null) { questionText.text="Nice work!"; lessonText.text="Finish the hold, then see your results."; return; }
-            questionText.text=current.Prompt;
-            int index=questions.IndexOf(current);
-            string action=current.Duration>0?"HOLD the correct answer\nuntil its ribbon ends.":"TAP the correct answer\nwhen it meets the line.";
-            string hint=tutorial?(index==0?"2 + 3 means 5.\nChoose the note marked 5.":index==1?"Ignore the three wrong answers.\nWrong choice: −500 + combo break.":index==2?"Use D F J K or click a lane.\nListen to the beat for timing.":index==3?"Correct answer + good timing\nkeeps your combo growing.":index==4?"Long ribbons are hold notes.\nPress and keep holding.":"You have got this.\nSolve first, then follow the beat."):advanced?"BONUS ◆ = hold the lane.\nBONUS ↑ = release key / swipe.\nV reduces visual motion.":"One answer is correct.\nLet the other three pass.";
-            float until=current.Time-t;
-            lessonText.text=$"QUESTION {index+1} / {questions.Count}\n\n{action}\n\n{hint}\n\n"+(until>0?$"HIT IN {until:0.0}s":"NOW!");
+            MathQuestion current = questions.Find(q => !q.Resolved && t >= q.Time - 3f && t <= q.Time + MissLimit);
+            questionCard.SetActive(current != null && !finished);
+            questionText.text = current?.Prompt ?? "";
+            if (!tutorial || finished) return;
+
+            if (t < 4f)
+                lessonText.text = "Press D, F, J, or K, or click a lane when its note reaches the line.";
+            else if (t < 7f)
+                lessonText.text = "Hold the key or mouse button until the tail reaches the line.";
+            else if (t < 10f)
+                lessonText.text = "For a diamond note, hold the lane before it reaches the line.";
+            else if (t < 15f)
+                lessonText.text = "Solve the equation and hit the note with the correct answer.";
+            else
+                lessonText.text = "A wrong answer costs 500 points and breaks your combo.\nEsc opens Levels. R retries. C opens audio sync.";
         }
 
         void Spawn(float t)
@@ -477,7 +462,7 @@ namespace RhythmMilestone
             while(next<chart.Count && chart[next].time-t<=LeadIn)
             {
                 ChartNote data=chart[next++];
-                var root=new GameObject(data.bonus?"Bonus "+data.question.Gesture:data.duration>0?"Hold Note":"Tap Note").transform; root.SetParent(tracks[data.lane],false);
+                var root=new GameObject(data.bonus?"Rhythm "+data.question.Gesture:data.duration>0?"Hold Note":"Tap Note").transform; root.SetParent(tracks[data.lane],false);
                 var n=new Note(data,root.gameObject);
                 if(data.duration>0)
                 {
@@ -498,19 +483,17 @@ namespace RhythmMilestone
                     var diamond=Sprite("Hold Diamond",root,white,Color.white,14);
                     diamond.transform.localPosition=new Vector3(.43f,0,0); diamond.transform.localRotation=Quaternion.Euler(0,0,45); diamond.transform.localScale=new Vector3(.07f,.07f,1);
                 }
-                var answer=new GameObject("Answer "+data.question.Choices[data.lane]).AddComponent<TextMesh>();
-                answer.transform.SetParent(root,false); answer.transform.localPosition=new Vector3(0,0,-.01f);
-                answer.text=data.bonus?(data.question.Gesture==NoteGesture.Flick?"↑":data.question.Gesture==NoteGesture.Drag?"◆":"+"):data.question.Choices[data.lane].ToString(); answer.anchor=TextAnchor.MiddleCenter;
-                answer.alignment=TextAlignment.Center; answer.fontSize=64; answer.characterSize=.065f;
-                answer.color=Color.white; answer.GetComponent<MeshRenderer>().sortingOrder=16;
-                n.answer=answer;
-                if(data.bonus)
+                if (!data.bonus || data.question.Gesture == NoteGesture.Drag)
                 {
-                    n.kindLabel=new GameObject("Gesture label").AddComponent<TextMesh>();
-                    n.kindLabel.transform.SetParent(root,false); n.kindLabel.transform.localPosition=new Vector3(0,.47f,0);
-                    n.kindLabel.text=data.question.Gesture.ToString().ToUpper(); n.kindLabel.anchor=TextAnchor.MiddleCenter;
-                    n.kindLabel.fontSize=40; n.kindLabel.characterSize=.038f; n.kindLabel.color=Color.white;
-                    n.kindLabel.GetComponent<MeshRenderer>().sortingOrder=16;
+                    var answer = new GameObject("Note label").AddComponent<TextMesh>();
+                    answer.transform.SetParent(root,false);
+                    answer.transform.localPosition=new Vector3(0,0,-.01f);
+                    answer.text=data.bonus?"◆":data.question.Choices[data.lane].ToString();
+                    answer.anchor=TextAnchor.MiddleCenter;
+                    answer.alignment=TextAlignment.Center;
+                    answer.fontSize=64; answer.characterSize=.065f;
+                    answer.color=Color.white; answer.GetComponent<MeshRenderer>().sortingOrder=16;
+                    n.answer=answer;
                 }
                 notes.Add(n);
             }
@@ -527,25 +510,24 @@ namespace RhythmMilestone
                 if(n.started && n.hold!=null)
                 {
                     var state=n.hold.Tick(t,autoplay||Input.GetKey(Keys[n.data.lane])||(Input.GetMouseButton(0)&&mouseLane==n.data.lane));
-                    if(state==HoldTracker.Result.Complete) { Judge(n,"HELD!",1000); Remove(i); continue; }
-                    if(state==HoldTracker.Result.Broken) { brokenHolds++; Fail(n,"HOLD BREAK",1); Remove(i); continue; }
+                    if(state==HoldTracker.Result.Complete) { Judge(n,"Held",1000); Remove(i); continue; }
+                    if(state==HoldTracker.Result.Broken) { brokenHolds++; Fail(n,"Hold break",1); Remove(i); continue; }
                     flashes[n.data.lane]=.75f;
                     if(Time.unscaledTime>=n.nextSpark)
                     { Burst(n.data.lane,3,.5f); n.nextSpark=Time.unscaledTime+.09f; }
                 }
                 if(!n.started && t>n.data.time+MissLimit)
                 {
-                    if(correct) { n.data.question.Resolved=true; Fail(n,"MISSED / −250",n.data.duration>0?2:1); }
+                    if(correct) { n.data.question.Resolved=true; Fail(n,"Miss",n.data.duration>0?2:1); }
                     Remove(i); continue;
                 }
                 if(n.started && n.hold==null) { Remove(i); continue; }
                 float y=n.started?0:(n.data.time-t)*TravelSpeed;
                 n.obj.transform.localPosition=new Vector3(0,y,0);
-                n.answer.transform.rotation=Quaternion.identity;
-                if(n.kindLabel!=null) n.kindLabel.transform.rotation=Quaternion.identity;
+                if(n.answer!=null) n.answer.transform.rotation=Quaternion.identity;
                 if(n.tail!=null)
                 {
-                    float length=Mathf.Max(.02f,(n.started?n.data.End-t:n.data.duration)*Speed);
+                    float length=Mathf.Max(.02f,(n.started?n.data.End-t:n.data.duration)*TravelSpeed);
                     n.tail.transform.localPosition=new Vector3(0,length*.5f,0);
                     n.tail.transform.localScale=new Vector3(n.started?.46f:.34f,length,1);
                     n.tail.color=Alpha(colors[n.data.lane],n.started?.65f:.32f);
@@ -568,28 +550,26 @@ namespace RhythmMilestone
                 float e=Mathf.Abs(n.data.time-t);
                 if(e<error) { error=e; best=n; }
             }
-            if(best!=null && best.data.question.Gesture==NoteGesture.Flick && gesture==NoteGesture.Tap && error<=LeadIn)
-            { Feedback("FLICK / RELEASE KEY",colors[lane]); return; }
             if(best!=null && best.data.question.Gesture==NoteGesture.Drag && gesture==NoteGesture.Tap && error<=LeadIn)
-            { Feedback("DRAG / HOLD THE LANE",colors[lane]); return; }
+                return;
             bool matching=best!=null && (best.data.question.Gesture==gesture || (gesture==NoteGesture.Tap && best.data.question.Gesture==NoteGesture.Hold));
-            // Sustained drag scans and key-up scans only act on their own note type.
+            // Sustained input only collects drag notes.
             if(gesture!=NoteGesture.Tap && (!matching||error>HitWindow)) return;
             if(gesture==NoteGesture.Drag && t<best.data.time) return;
             if(best==null || error>HitWindow || !matching)
             {
                 bool sustaining=notes.Exists(n=>n.started&&n.hold!=null&&n.data.lane==lane);
-                if(!sustaining && t>=questions[0].Time-HitWindow && t<EndTime)
-                    Penalty("OFF BEAT / −100",100,0);
+                if(!sustaining && chart.Count>0 && t>=chart[0].time-HitWindow && t<EndTime)
+                    Penalty("Off beat",100,0);
                 return;
             }
             if(lane!=best.data.question.CorrectLane)
             {
                 best.data.question.Resolved=true;
-                Penalty("WRONG / −500",500,best.data.duration>0?2:1);
+                Penalty("Wrong answer",500,best.data.duration>0?2:1);
                 return;
             }
-            string label=gesture==NoteGesture.Drag?"DRAG!":gesture==NoteGesture.Flick?"FLICK!":error<=PerfectLimit?"PERFECT":error<=GoodLimit?"GOOD":"BAD";
+            string label=error<=PerfectLimit?"PERFECT":error<=GoodLimit?"GOOD":"BAD";
             Begin(best,label,error<=PerfectLimit?1000:error<=GoodLimit?650:250);
         }
 
@@ -597,7 +577,7 @@ namespace RhythmMilestone
         {
             n.started=true; n.data.question.Resolved=true;
             if(n.hold!=null) n.hold.Begin();
-            Judge(n,n.hold!=null?label+" / HOLD":label,points);
+            Judge(n,label,points);
         }
 
         void Judge(Note n,string label,int points)
@@ -605,9 +585,9 @@ namespace RhythmMilestone
             score+=points; earnedPoints+=points; judgments++; if(points==1000) perfectCount++;
             combo++; maxCombo=Mathf.Max(combo,maxCombo); comboAt=Time.unscaledTime;
             flashes[n.data.lane]=1;
-            Burst(n.data.lane,label=="HELD!"?18:10,1);
+            Burst(n.data.lane,label=="Held"?18:10,1);
             Feedback(label,points==1000?colors[n.data.lane]:points==650?new Color(.5f,1,.65f):new Color(1,.65f,.3f));
-            sound.Correct(label=="HELD!"); UpdateHud();
+            sound.Correct(label=="Held"); UpdateHud();
         }
 
         void Fail(Note n,string label,int count)
@@ -679,19 +659,18 @@ namespace RhythmMilestone
 
         void UpdateHud()
         {
-            scoreText.text=score.ToString("0000000"); comboText.text=combo+"\n<size=19>COMBO</size>";
-            float accuracy=judgments==0?100:100f*earnedPoints/(judgments*1000);
-            detailText.text=$"{accuracy:0.00}%   /   BEST {maxCombo:000}";
+            scoreText.text=score.ToString("N0");
+            comboText.text=combo>0?$"{combo} combo":"";
         }
 
         void Complete()
         {
             finished=true; sound.Stop(); resultButtons.SetActive(true);
-            questionText.text=""; lessonText.text="";
-            Feedback(mistakes==0 && combo==judgments?"FULL COMBO":"CHART COMPLETE",new Color(.5f,.9f,1));
+            questionCard.SetActive(false); questionText.text=""; lessonText.text="";
+            feedbackText.text="";
             float accuracy=judgments==0?0:100f*earnedPoints/(judgments*1000);
             string rank=accuracy>=98?"S":accuracy>=90?"A":accuracy>=80?"B":"C";
-            resultText.text=$"RANK {rank}   /   {accuracy:0.00}%\n<size=22>{perfectCount} PERFECT   •   {mistakes} MISTAKES   •   {brokenHolds} HOLD BREAKS</size>";
+            resultText.text=$"Rank {rank}\n<size=24>{accuracy:0.0}% accuracy   ·   {maxCombo} best combo</size>";
         }
 
         void ClearNotes()
@@ -720,7 +699,7 @@ namespace RhythmMilestone
             // Generate the backing first; both playback and note positions use this same origin.
             songStartDSP=AudioSettings.dspTime+Delay;
             sound.Begin(songStartDSP,Bpm); UpdateVisuals(0);
-            Feedback("LISTEN / GET READY",Color.white); UpdateHud(); UpdateQuestion(-Delay);
+            feedbackText.text=""; UpdateHud(); UpdateQuestion(-Delay);
         }
 
         SpriteRenderer Sprite(string name,Transform parent,Sprite sprite,Color color,int order)
@@ -774,7 +753,7 @@ namespace RhythmMilestone
         sealed class Note
         {
             public readonly ChartNote data; public readonly GameObject obj; public readonly HoldTracker hold;
-            public TextMesh answer,kindLabel; public SpriteRenderer head,tail,tailCore,cap; public bool started; public float nextSpark;
+            public TextMesh answer; public SpriteRenderer head,tail,tailCore,cap; public bool started; public float nextSpark;
             public Note(ChartNote data,GameObject obj)
             { this.data=data; this.obj=obj; if(data.duration>0) hold=new HoldTracker(data.End); }
         }

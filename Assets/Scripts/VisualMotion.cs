@@ -13,6 +13,8 @@ namespace RhythmMilestone
     public static class VisualMotion
     {
         public static readonly string[] Names={"DRIFT","TILT","SPLIT","REVERSE","ORBIT","FINALE"};
+        public static float SongBeat(float seconds) => Mathf.Max(0, seconds) * 96f / MathLesson.SongDuration;
+
         public static VisualPose Sample(float beat,bool reduced=false)
         {
             float b=Mathf.Max(0,beat);
@@ -71,5 +73,5 @@ namespace RhythmMilestone
         public static float LaneAngle(VisualPose pose,int lane)=>lane<2?pose.PrimaryAngle:pose.SecondaryAngle;
     }
 
-    public enum NoteGesture { Tap, Hold, Drag, Flick }
+    public enum NoteGesture { Tap, Hold, Drag }
 }

@@ -48,8 +48,8 @@ public static class RhythmPreview
             game.GetType().GetField("autoplay",BindingFlags.NonPublic|BindingFlags.Instance).SetValue(game,true);
             levelBegan=now; stage=3;
         }
-        if(stage==3 && now-levelBegan>3.7) { Capture("math-tutorial"); stage=4; }
-        if(stage==4 && now-levelBegan>24.2) { Capture("math-hold"); stage=5; }
+        if(stage==3 && now-levelBegan>6.8) { Capture("tutorial-hold"); stage=4; }
+        if(stage==4 && now-levelBegan>13.5) { Capture("math-tutorial"); stage=5; }
         if(stage==5 && (bool)game.GetType().GetField("finished",BindingFlags.NonPublic|BindingFlags.Instance).GetValue(game))
         {
             Capture("tutorial-results"); stage=6; began=now;

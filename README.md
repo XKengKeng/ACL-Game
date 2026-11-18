@@ -8,6 +8,8 @@
 
 Unity creates `Library`, `Temp`, `Logs`, and `UserSettings` locally. These generated folders are excluded from Git.
 
+See [How to Play](PLAYING.md) for a quick gameplay and audio calibration guide.
+
 ## Team contributions
 `Math_Question_Generator/` contains the team's C++ generator, question-bank reader, and generated `questions.csv`. The current Unity game uses the questions in `Assets/Scripts/MathLesson.cs`; importing the external question bank is future integration work.
 

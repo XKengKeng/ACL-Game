@@ -1,0 +1,61 @@
+
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <vector>
+#include <string>
+using namespace std;
+
+struct Question {
+    int id;
+    string category;
+    string difficulty;
+    string text;
+    string answer;
+};
+
+int main() {
+    ifstream file("questions.csv");
+
+    if (!file.is_open()) {
+        cerr << "Cannot open questions.csv\n";
+        return 1;
+    }
+
+    vector<Question> bank;
+    string line;
+
+    getline(file, line); // Skip header
+
+    while (getline(file, line)) {
+        stringstream ss(line);
+        string id, category, difficulty, text, answer;
+
+        getline(ss, id, ',');
+        getline(ss, category, ',');
+        getline(ss, difficulty, ',');
+        getline(ss, text, ',');
+        getline(ss, answer, ',');
+
+        Question q{
+            stoi(id), category, difficulty, text, answer
+        };
+
+        bank.push_back(q);
+    }
+
+    cout << "Loaded " << bank.size()
+         << " questions successfully!\n\n";
+
+    // Display first five questions
+    for (int i = 0; i < 5 && i < bank.size(); i++) {
+        cout << "Question " << bank[i].id << ": "
+             << bank[i].text << "\n";
+        cout << "Difficulty: "
+             << bank[i].difficulty << "\n";
+        cout << "Answer: "
+             << bank[i].answer << "\n\n";
+    }
+
+    return 0;
+}
